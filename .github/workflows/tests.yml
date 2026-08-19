@@ -1,24 +1,22 @@
 name: tests
 
-# The compilerdiv package lives in a subdirectory of this repository, so every
-# step runs from there. The job fails if any test fails (pytest exits non-zero),
-# which is what gates a merge.
+# The compilerdiv package lives under src/ in this repository root.
+# The job fails if any test fails (pytest exits non-zero), which is what gates
+# a merge.
 
 on:
   push:
     branches: [master, main]
     paths:
-      - "compilerdiv/**"
+      - "src/**"
+      - "pyproject.toml"
       - ".github/workflows/tests.yml"
   pull_request:
     paths:
-      - "compilerdiv/**"
+      - "src/**"
+      - "pyproject.toml"
       - ".github/workflows/tests.yml"
   workflow_dispatch: {}
-
-defaults:
-  run:
-    working-directory: compilerdiv
 
 jobs:
   pytest:
@@ -36,7 +34,7 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
           cache: pip
-          cache-dependency-path: compilerdiv/pyproject.toml
+          cache-dependency-path: pyproject.toml
 
       - name: Install package with dev extras
         run: python -m pip install -e ".[dev]"
@@ -61,7 +59,7 @@ jobs:
         with:
           python-version: "3.14"
           cache: pip
-          cache-dependency-path: compilerdiv/pyproject.toml
+          cache-dependency-path: pyproject.toml
 
       - name: Install package with dev extras
         run: python -m pip install -e ".[dev]"
