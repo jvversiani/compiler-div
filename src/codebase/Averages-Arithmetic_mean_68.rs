@@ -1,0 +1,24 @@
+// Rosetta Code task: Averages/Arithmetic mean
+// Source: https://rosettacode.org/wiki/Averages/Arithmetic_mean#Rust
+// Content licensed under GFDL 1.2 (Rosetta Code).
+// =======================
+// Expected output:
+// mean of [2.0, 3.0, 5.0, 7.0, 13.0, 21.0, 33.0, 54.0]: 17.25
+// mean of []: NaN
+// =======================
+
+fn sum(arr: &[f64]) -> f64 {
+    arr.iter().fold(0.0, |p,&q| p + q)
+}
+
+fn mean(arr: &[f64]) -> f64 {
+    sum(arr) / arr.len() as f64
+}
+
+fn main() {
+    let v = &[2.0, 3.0, 5.0, 7.0, 13.0, 21.0, 33.0, 54.0];
+    println!("mean of {:?}: {:?}", v, mean(v));
+
+    let w = &[];
+    println!("mean of {:?}: {:?}", w, mean(w));
+}

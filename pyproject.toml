@@ -1,0 +1,147 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "compilerdiv"
+version = "0.1.0"
+description = "Behavioral equivalence analysis of diverse compilers"
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [
+    { name = "Joao Gouvea-Versiani" },
+]
+license = { text = "MIT" }
+dependencies = [
+    "numpy>=1.24",
+    "pandas>=2.0",
+    "scipy>=1.10",
+    "matplotlib>=3.7",
+    "openpyxl>=3.1",
+    "pyyaml>=6.0",
+]
+
+[project.optional-dependencies]
+# Strongly recommended for full sweeps: switches the raw store from CSV to
+# Parquet (smaller on disk, column pruning on resume).
+fast = [
+    "pyarrow>=12.0",
+]
+dev = [
+    "pyarrow>=12.0",
+    "pytest>=7.0",
+    "pytest-cov>=4.0",
+    "black>=24.0",
+    "pylint>=3.0",
+    "mypy>=1.8",
+    "types-PyYAML",
+]
+
+[project.scripts]
+compilerdiv = "compilerdiv.cli.main:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+# The suite lives at src/tests/ (next to the package, not inside it); it must
+# never be shipped as a top-level `tests` package in the wheel.
+exclude = ["tests*"]
+
+[tool.pytest.ini_options]
+testpaths = ["src/tests"]
+pythonpath = ["src"]
+addopts = "-ra --strict-markers"
+markers = [
+    "corpus: source discovery, expected-output parsing, SLOC",
+    "languages: multi-language detection, per-language parsing, output_flag",
+    "config: YAML loading, validation, the settings fingerprint",
+    "stats: divergence and multiple-comparison helpers",
+    "noise: empirical noise-floor derivation from the controls",
+    "trace: strace parsing into counts / sequences / arguments",
+    "store: the raw Parquet/CSV store, resume, aggregation",
+    "detectors: the four departure detectors",
+    "taxonomy: departure classification and the layout probe",
+    "cli: argument parsing and command wiring",
+    "integration: end-to-end flows over a fabricated raw store (analyze, sweep)",
+    "acquire: compile / run / trace measurement with a stubbed toolchain",
+]
+
+# ---------------------------------------------------------------------------
+# Formatting: black
+# ---------------------------------------------------------------------------
+[tool.black]
+line-length = 88
+target-version = ["py312"]
+
+# ---------------------------------------------------------------------------
+# Type checking: mypy
+# ---------------------------------------------------------------------------
+# The scientific stack (pandas/numpy/scipy/matplotlib) is followed only far
+# enough to catch our own mistakes; their own dynamic typing is not something we
+# police here, hence the per-module overrides below.
+[tool.mypy]
+python_version = "3.14"
+files = ["src/compilerdiv"]
+ignore_missing_imports = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+no_implicit_optional = true
+# The codebase is not fully annotated (numeric helpers pass ndarrays around);
+# we type the interfaces, not every local.
+check_untyped_defs = true
+disallow_untyped_defs = false
+
+[[tool.mypy.overrides]]
+# Treat these as untyped: their stubs generate more noise than signal for a
+# pipeline that shuttles DataFrames and ndarrays between stages.
+module = ["pandas.*", "scipy.*", "matplotlib.*", "pyarrow.*", "numpy.*"]
+follow_imports = "skip"
+follow_imports_for_stubs = true
+
+# ---------------------------------------------------------------------------
+# Linting: pylint
+# ---------------------------------------------------------------------------
+[tool.pylint.main]
+py-version = "3.14"
+jobs = 0                       # parallelise across cores
+ignore-paths = ['^src/tests/.*$']  # tests are linted with their own relaxed rules
+
+[tool.pylint.format]
+max-line-length = 88
+
+[tool.pylint.basic]
+# Short names are idiomatic in numeric code and comprehensions.
+good-names = ["i", "j", "k", "n", "f", "e", "p", "s", "c", "d", "m", "x", "y",
+              "df", "tr", "td", "rho", "ok", "fh", "wb", "bc", "sc", "mp", "rx"]
+
+[tool.pylint."messages control"]
+# Disabled with intent, not to inflate the score:
+#   *-docstring        - modules/classes are documented; small helpers are not.
+#   too-many-*         - a measurement pipeline legitimately has wide signatures
+#                        and long orchestration functions.
+#   import-outside-toplevel - lazy imports are deliberate (CLI startup, optional
+#                        parquet backend).
+#   duplicate-code     - the plot/report builders share intentional structure.
+#   subprocess-run-check - return codes are handled explicitly, not via check=.
+#   broad-exception-caught - graceful degradation around readelf/strace.
+disable = [
+    "line-too-long",  # black owns line length; a few string literals exceed 88.
+    "missing-module-docstring",
+    "missing-class-docstring",
+    "missing-function-docstring",
+    "too-many-arguments",
+    "too-many-positional-arguments",
+    "too-many-locals",
+    "too-many-branches",
+    "too-many-statements",
+    "too-many-instance-attributes",
+    "too-many-public-methods",  # Settings is the config root; accessors are its job.
+    "too-many-return-statements",
+    "too-few-public-methods",
+    "import-outside-toplevel",
+    "duplicate-code",
+    "subprocess-run-check",
+    "broad-exception-caught",
+]
+
+[tool.pylint.reports]
+score = true
