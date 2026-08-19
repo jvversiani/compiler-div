@@ -1,0 +1,161 @@
+# compilerdiv configuration
+#
+# Paths are relative to project_root, which is itself relative to THIS file.
+# Run `compilerdiv doctor` after editing to see the settings fingerprint: any change
+# to an acquisition-affecting setting invalidates an existing raw log, and
+# resume will refuse rather than mix incompatible data.
+
+baseline: A
+
+paths:
+  project_root: .
+  # All corpus files must share ONE extension: a run applies one fixed compiler
+  # argv to every program, so a mixed corpus is rejected before any work starts.
+  # Unrecognised files (README.md, Makefile, ...) are ignored and are fine.
+  corpus_dir: src/codebase
+  work_dir: build/compilerdiv_work      # scratch; binaries live here during a sweep
+  raw_dir: results/raw              # the append-only Parquet store
+  out_dir: results                  # workbooks and figures
+  keep_binaries: false              # true to leave binaries on disk for readelf/nm
+
+compilers:
+  # Reference compiler
+  - key: A
+    label: rustc_std
+    cmd: [rustc]
+    color: "#4C72B0"
+
+  # Other compilers
+  - key: B
+    label: mrustc
+    cmd: [mrustc_rustc_bootstraped/prefix/bin/rustc]
+    color: "#55A868"
+
+  - key: C
+    label: rustc_gcc
+    cmd: ["./y.sh", "rustc"]
+    cwd: rustc_codegen_gcc
+    # y.sh needs the source immediately after "rustc"; with the source last it
+    # falls through to a cargo invocation and fails looking for src/main.rs.
+    src_first: true
+    color: "#DD8452"
+
+configs:
+  - name: basic
+    flags: []
+
+  # Uncomment to sweep optimisation levels. Each added config multiplies the
+  # sweep cost, and changing this list changes the fingerprint.
+  #
+  # - name: O1
+  #   flags: ["-C", "opt-level=1"]
+  # - name: O2
+  #   flags: ["-C", "opt-level=2"]
+  # - name: O3
+  #   flags: ["-C", "opt-level=3"]
+  # - name: Oz
+  #   flags: ["-C", "opt-level=z"]
+  # - name: static
+  #   flags: ["-C", "target-feature=+crt-static"]
+  #   unsupported: [C]        # rustc_codegen_gcc cannot do +crt-static
+
+trace:
+  reps: 3
+  # Prefix placed before strace. Required where ptrace is confined: set to []
+  # if your machine allows plain strace.
+  wrapper: ["unshare", "-Ur"]
+  strace_bin: strace
+  timeout_s: 600
+
+  # Argument capture powers the argument detector: openat("/etc/passwd") vs
+  # openat("/lib/x.so") at identical counts.
+  capture_args: true
+  arg_syscalls:
+    - openat
+    - open
+    - stat
+    - newfstatat
+    - lstat
+    - access
+    - readlink
+    - execve
+    - connect
+    - sendto
+    - bind
+    - unlink
+    - unlinkat
+    - rename
+    - renameat
+    - mkdir
+    - mkdirat
+    - chmod
+    - fchmodat
+    - socket
+    - write
+
+  # Sequence capture powers the n-gram detector. Per-thread, intersected across
+  # reps, so scheduler interleavings drop out on their own.
+  capture_sequence: true
+  ngram_sizes: [3, 4, 5]
+
+bench:
+  reps: 3
+  exec_timeout_s: 300
+
+  # The embedded integration test. Each binary is run untraced and its stdout
+  # checked against the "Expected output:" block in its own source header
+  # before anything is traced. A program that fails is
+  # logged to the errors stream and dropped from that compiler's set for the
+  # rest of the sweep.
+  #
+  # Programs whose header carries no expected block pass by
+  # default: `compilerdiv corpus` reports how many.
+  #
+  # Docs: docs/USAGE.md -> bench -> verify_output
+  verify_output: true
+
+  # Keep timing rows for binaries that fail the check above (marked
+  # verified=False) instead of discarding them.
+  keep_unverified: false
+
+controls:
+  # The baseline is measured as a nested grid: `builds` independent
+  # compilations of the same source, each traced under `passes` independent
+  # sessions. Group (0,0) is `A` itself; the rest are tagged `A@<build>.<pass>`.
+  #
+  #   within a build  -> same binary, so any difference is run-to-run noise
+  #   between builds  -> different binaries, so build nondeterminism as well
+
+  builds: 3
+  passes: 3
+
+detect:
+  count_tol: 0.5
+  auto_noisy_min_files: 3
+  # Fraction of the corpus a fixed delta must cover to be "uniform" rather than
+  # "conditional".
+  uniform_threshold: 0.95
+  # |Spearman rho| of delta vs SLOC above which a departure is program_dependent.
+  program_dependent_rho: 0.5
+
+  # Dropped from count statistics entirely. Empty by default.
+  excluded_syscalls: []
+
+  # Excluded from the DEPARTURE DETECTORS only (allocator / scheduler churn).
+  # Distinct from the noise classification, which is derived from the controls.
+  departure_ignore: []
+
+  # Applied to trace arguments before comparison, to strip run-varying content.
+  arg_normalizers:
+    - pattern: '/proc/\d+/'
+      replace: '/proc/<PID>/'
+    - pattern: '/tmp/[A-Za-z0-9._-]{6,}'
+      replace: '/tmp/<RANDOM>'
+    - pattern: '0x[0-9a-f]{6,}'
+      replace: '<ADDR>'
+    - pattern: '\b\d{4,}\b'
+      replace: '<NUM>'
+
+# Rows are appended to the raw store every this-many binaries. A crash loses at
+# most this much work.
+flush_every: 20

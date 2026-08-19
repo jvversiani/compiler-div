@@ -1,0 +1,77 @@
+name: tests
+
+# The compilerdiv package lives in a subdirectory of this repository, so every
+# step runs from there. The job fails if any test fails (pytest exits non-zero),
+# which is what gates a merge.
+
+on:
+  push:
+    branches: [master, main]
+    paths:
+      - "compilerdiv/**"
+      - ".github/workflows/tests.yml"
+  pull_request:
+    paths:
+      - "compilerdiv/**"
+      - ".github/workflows/tests.yml"
+  workflow_dispatch: {}
+
+defaults:
+  run:
+    working-directory: compilerdiv
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.12", "3.13", "3.14"]
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: compilerdiv/pyproject.toml
+
+      - name: Install package with dev extras
+        run: python -m pip install -e ".[dev]"
+
+      - name: Run the test suite
+        # -ra and --strict-markers come from pyproject; add coverage of the
+        # package source and fail the job if it drops below 85% or any test
+        # fails (pytest exits non-zero either way).
+        run: >-
+          python -m pytest
+          --cov=compilerdiv --cov-report=term-missing --cov-fail-under=85
+
+  lint:
+    # Formatting, typing and linting only need one interpreter. Any tool exiting
+    # non-zero fails the job, so a merge is gated on a clean run of all three.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.14"
+          cache: pip
+          cache-dependency-path: compilerdiv/pyproject.toml
+
+      - name: Install package with dev extras
+        run: python -m pip install -e ".[dev]"
+
+      - name: black (formatting)
+        # `src` covers both the package and the suite: tests live at src/tests.
+        run: python -m black --check --diff src
+
+      - name: pylint (linting)
+        run: python -m pylint src/compilerdiv
+
+      - name: mypy (type checking)
+        run: python -m mypy
